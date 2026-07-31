@@ -38,6 +38,7 @@ export default function MarriageBureauDemo() {
   function mapDbProfile(row) {
     return {
       id: row.id,
+      user_id: row.user_id,
       name: row.full_name,
       age: row.age ?? "-",
       city: row.city || "-",
@@ -89,17 +90,60 @@ export default function MarriageBureauDemo() {
   const [cardNumber, setCardNumber] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("form"); // form -> processing -> success
 
-  // ---------- Chat (mock — local/personal only, no messaging API cost) ----------
+  // ---------- Chat & Interests — REAL Supabase tables (multi-user) ----------
   const [conversations, setConversations] = useState({}); // { [profileId]: [{from, text, ts}] }
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatDraft, setChatDraft] = useState("");
-  const CANNED_REPLIES = [
-    "Ji shukriya, aapki profile bhi achi lagi 🙂",
-    "Family se baat karke bataata/bataati hoon.",
-    "Aapka native place kaunsa hai?",
-    "Kya hum call pe baat kar sakte hain?",
-    "Theek hai, aage baat badhate hain.",
-  ];
+
+  const myProfile = useMemo(
+    () => (session ? profiles.find((p) => p.user_id === session.user.id) : null),
+    [profiles, session]
+  );
+
+  async function fetchInterestsRemote(token, myId) {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/interests?select=from_profile_id,to_profile_id&or=(from_profile_id.eq.${myId},to_profile_id.eq.${myId})`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) return;
+      const rows = await res.json();
+      const map = {};
+      rows.forEach((r) => {
+        if (r.from_profile_id === myId) map[r.to_profile_id] = true;
+      });
+      setInterests(map);
+    } catch (err) {
+      console.error("Fetch interests failed:", err);
+    }
+  }
+
+  async function fetchMessagesRemote(token, myId) {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/messages?select=*&or=(from_profile_id.eq.${myId},to_profile_id.eq.${myId})&order=created_at.asc`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) return;
+      const rows = await res.json();
+      const grouped = {};
+      rows.forEach((r) => {
+        const counterpart = r.from_profile_id === myId ? r.to_profile_id : r.from_profile_id;
+        if (!grouped[counterpart]) grouped[counterpart] = [];
+        grouped[counterpart].push({ from: r.from_profile_id === myId ? "me" : "them", text: r.text, ts: r.created_at });
+      });
+      setConversations(grouped);
+    } catch (err) {
+      console.error("Fetch messages failed:", err);
+    }
+  }
+
+  useEffect(() => {
+    if (session && myProfile) {
+      fetchInterestsRemote(session.access_token, myProfile.id);
+      fetchMessagesRemote(session.access_token, myProfile.id);
+    }
+  }, [session, myProfile && myProfile.id]);
 
   // ---------- Video call (self-camera preview only, mock connection — no WebRTC/Agora API cost) ----------
   const [callProfile, setCallProfile] = useState(null);
@@ -279,15 +323,6 @@ export default function MarriageBureauDemo() {
     }
   }
 
-  async function saveInterests(next) {
-    setInterests(next);
-    try {
-      await window.storage.set("interests", JSON.stringify(next), false);
-    } catch (err) {
-      console.error("Save interests failed:", err);
-    }
-  }
-
   async function savePlan(next) {
     setPlan(next);
     try {
@@ -297,32 +332,62 @@ export default function MarriageBureauDemo() {
     }
   }
 
-  async function saveConversations(next) {
-    setConversations(next);
+  const [interestError, setInterestError] = useState("");
+  async function sendInterestRemote(toId) {
+    if (!myProfile) {
+      setInterestError("Interest bhejne ke liye pehle apni profile banayein.");
+      return;
+    }
+    setInterests((i) => ({ ...i, [toId]: true }));
     try {
-      await window.storage.set("conversations", JSON.stringify(next), false);
-    } catch (err) {
-      console.error("Save conversations failed:", err);
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/interests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ from_profile_id: myProfile.id, to_profile_id: toId, status: "sent" }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setInterests((i) => {
+        const next = { ...i };
+        delete next[toId];
+        return next;
+      });
+      setInterestError("Interest save nahi hua, dobara try karein.");
     }
   }
 
-  function sendMessage() {
+  const [chatSending, setChatSending] = useState(false);
+  async function sendMessage() {
     if (!chatDraft.trim() || !activeChatId) return;
-    const thread = conversations[activeChatId] || [];
-    const myMsg = { from: "me", text: chatDraft.trim(), ts: Date.now() };
-    const next = { ...conversations, [activeChatId]: [...thread, myMsg] };
-    saveConversations(next);
+    if (!myProfile) {
+      setInterestError("Message bhejne ke liye pehle apni profile banayein.");
+      return;
+    }
+    const text = chatDraft.trim();
     setChatDraft("");
-    // Mock auto-reply so the chat feels alive — no AI/messaging API involved
-    setTimeout(() => {
-      const reply = CANNED_REPLIES[Math.floor(Math.random() * CANNED_REPLIES.length)];
-      setConversations((c) => {
-        const t = c[activeChatId] || [];
-        const updated = { ...c, [activeChatId]: [...t, { from: "them", text: reply, ts: Date.now() }] };
-        window.storage.set("conversations", JSON.stringify(updated), false).catch(() => {});
-        return updated;
+    setChatSending(true);
+    const optimistic = { from: "me", text, ts: new Date().toISOString() };
+    setConversations((c) => ({ ...c, [activeChatId]: [...(c[activeChatId] || []), optimistic] }));
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ from_profile_id: myProfile.id, to_profile_id: activeChatId, text }),
       });
-    }, 1400);
+      if (!res.ok) throw new Error();
+    } catch {
+      setInterestError("Message bhejte waqt error aayi.");
+    } finally {
+      setChatSending(false);
+    }
   }
 
   // ---------- Profile creation ----------
@@ -509,10 +574,6 @@ export default function MarriageBureauDemo() {
     setFilters((f) => ({ ...f, [key]: !f[key] }));
   }
 
-  function sendInterest(id) {
-    saveInterests({ ...interests, [id]: true });
-  }
-
   const authFont = (
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Rozha+One&family=Mukta:wght@400;500;600;700&display=swap');
@@ -696,6 +757,12 @@ export default function MarriageBureauDemo() {
           <button onClick={() => setProfilesRemoteError("")} style={{ fontWeight: 700 }}>✕</button>
         </div>
       )}
+      {interestError && (
+        <div className="px-5 py-1.5 text-xs text-center flex items-center justify-center gap-2" style={{ background: "#F4DCC7", color: "#6B4A1F" }}>
+          {interestError}
+          <button onClick={() => setInterestError("")} style={{ fontWeight: 700 }}>✕</button>
+        </div>
+      )}
 
 
       {tab === "browse" && (
@@ -778,7 +845,7 @@ export default function MarriageBureauDemo() {
                           View
                         </button>
                         <button
-                          onClick={() => sendInterest(p.id)}
+                          onClick={() => sendInterestRemote(p.id)}
                           disabled={interests[p.id]}
                           className="flex-1 py-1.5 rounded-full text-xs font-semibold"
                           style={{ background: interests[p.id] ? "#3E5C50" : "#7A1F2B", color: "#FBF6EE" }}
@@ -1279,7 +1346,7 @@ export default function MarriageBureauDemo() {
                 <p><b>Verified:</b> {selected.verified ? "Yes ✓" : "Pending"}</p>
               </div>
               <button
-                onClick={() => { sendInterest(selected.id); }}
+                onClick={() => { sendInterestRemote(selected.id); }}
                 disabled={interests[selected.id]}
                 className="w-full mt-4 py-2 rounded-full text-sm font-semibold"
                 style={{ background: interests[selected.id] ? "#3E5C50" : "#7A1F2B", color: "#FBF6EE" }}
