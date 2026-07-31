@@ -31,6 +31,48 @@ const FILTER_DEFAULTS = { govt: false, business: false, single: false, widow: fa
 
 export default function MarriageBureauDemo() {
   const [profiles, setProfiles] = useState(SEED_PROFILES);
+  const SUPABASE_URL = "https://nhjrgoowbkgfozyazhzf.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oanJnb293YmtnZm96eWF6aHpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MjIyNzgsImV4cCI6MjEwMDE5ODI3OH0.C3p_XiPMocZUxgrAZeoSRhc1fMoABH4BvddVFAL9H5A";
+  const [profilesRemoteError, setProfilesRemoteError] = useState("");
+
+  function mapDbProfile(row) {
+    return {
+      id: row.id,
+      name: row.full_name,
+      age: row.age ?? "-",
+      city: row.city || "-",
+      height: row.height || "-",
+      weight: row.weight || "-",
+      complexion: row.complexion || "-",
+      build: row.build || "-",
+      religion: row.religion,
+      caste: row.caste || "-",
+      edu: row.education || "-",
+      job: row.job_type,
+      jobLabel: row.job_label || (JOB_META[row.job_type] ? JOB_META[row.job_type].label : ""),
+      marital: row.marital_status,
+      verified: row.verified,
+      income: row.income || "Not specified",
+      img: "🌸",
+      photoUrl: row.photo_url || "",
+    };
+  }
+
+  async function fetchProfilesRemote(token) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=*&order=created_at.desc`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Could not load profiles");
+      const rows = await res.json();
+      setProfiles(rows.map(mapDbProfile));
+      setProfilesRemoteError("");
+    } catch (err) {
+      console.error("Fetch profiles failed:", err);
+      setProfilesRemoteError("Live profiles load nahi hue — network check karein.");
+    }
+  }
+
   const [tab, setTab] = useState("browse");
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
   const [showFilters, setShowFilters] = useState(false);
@@ -201,11 +243,40 @@ export default function MarriageBureauDemo() {
   const [adminPinError, setAdminPinError] = useState("");
   const ADMIN_PIN = "9999";
 
-  function toggleVerified(id) {
-    saveProfiles(profiles.map((p) => (p.id === id ? { ...p, verified: !p.verified } : p)));
+  async function toggleVerified(id) {
+    const p = profiles.find((x) => x.id === id);
+    if (!p) return;
+    setProfiles((ps) => ps.map((x) => (x.id === id ? { ...x, verified: !x.verified } : x)));
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ verified: !p.verified }),
+      });
+      if (!res.ok) throw new Error("not allowed");
+    } catch {
+      // RLS only allows editing profiles you created — revert if it wasn't yours
+      setProfiles((ps) => ps.map((x) => (x.id === id ? { ...x, verified: p.verified } : x)));
+      setProfilesRemoteError("Sirf apni banayi profile verify/edit kar sakte ho (RLS security) — dusron ki profile ke liye admin backend chahiye.");
+    }
   }
-  function deleteProfile(id) {
-    saveProfiles(profiles.filter((p) => p.id !== id));
+  async function deleteProfile(id) {
+    const prev = profiles;
+    setProfiles((ps) => ps.filter((x) => x.id !== id));
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error("not allowed");
+    } catch {
+      setProfiles(prev);
+      setProfilesRemoteError("Sirf apni banayi profile delete kar sakte ho (RLS security).");
+    }
   }
 
   async function saveInterests(next) {
@@ -279,30 +350,62 @@ export default function MarriageBureauDemo() {
         : [...f.partnerJobPref, key],
     }));
   }
-  function submitProfile() {
-    const newProfile = {
-      id: Date.now(),
-      name: form.name || "Unnamed",
-      age: form.age || "-",
-      city: form.city || "-",
-      height: form.height || "-",
-      weight: form.weight || "-",
-      complexion: form.complexion,
-      build: form.build,
-      religion: form.religion,
-      caste: form.caste || "-",
-      edu: form.edu || "-",
-      job: form.jobType,
-      jobLabel: form.jobLabel || JOB_META[form.jobType].label,
-      marital: form.maritalStatus,
-      verified: false,
-      income: form.income || "Not specified",
-      img: form.img,
-      photoUrl: form.photoUrl || "",
-    };
-    saveProfiles([newProfile, ...profiles]);
-    setProfileCreated(true);
+  const [profileSubmitError, setProfileSubmitError] = useState("");
+  const [profileSubmitting, setProfileSubmitting] = useState(false);
+  async function submitProfile() {
+    setProfileSubmitError("");
+    setProfileSubmitting(true);
+    try {
+      const body = {
+        user_id: session.user.id,
+        role: role || "self",
+        full_name: form.name || "Unnamed",
+        age: form.age ? parseInt(form.age, 10) : null,
+        gender: form.gender,
+        city: form.city || null,
+        religion: form.religion,
+        caste: form.caste || null,
+        marital_status: form.maritalStatus,
+        height: form.height || null,
+        weight: form.weight || null,
+        complexion: form.complexion,
+        build: form.build,
+        education: form.edu || null,
+        job_type: form.jobType,
+        job_label: form.jobLabel || JOB_META[form.jobType].label,
+        income: form.income || null,
+        family_type: form.familyType,
+        father_occupation: form.fatherOcc || null,
+        partner_age_min: form.partnerAgeMin ? parseInt(form.partnerAgeMin, 10) : null,
+        partner_age_max: form.partnerAgeMax ? parseInt(form.partnerAgeMax, 10) : null,
+        partner_job_pref: form.partnerJobPref,
+        photo_url: form.photoUrl || null,
+        verified: false,
+      };
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Profile save nahi hui");
+      }
+      const [row] = await res.json();
+      setProfiles((ps) => [mapDbProfile(row), ...ps]);
+      setProfileCreated(true);
+    } catch (err) {
+      setProfileSubmitError(err.message);
+    } finally {
+      setProfileSubmitting(false);
+    }
   }
+
   function resetProfileForm() {
     setForm(EMPTY_FORM);
     setProfileStep(1);
@@ -311,9 +414,6 @@ export default function MarriageBureauDemo() {
   }
 
   // ---------- Auth — REAL Supabase Auth via REST (no SDK needed, zero extra cost) ----------
-  const SUPABASE_URL = "https://nhjrgoowbkgfozyazhzf.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oanJnb293YmtnZm96eWF6aHpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MjIyNzgsImV4cCI6MjEwMDE5ODI3OH0.C3p_XiPMocZUxgrAZeoSRhc1fMoABH4BvddVFAL9H5A";
-
   const [authed, setAuthed] = useState(false);
   const [authStep, setAuthStep] = useState("role"); // role -> auth
   const [role, setRole] = useState(null);
@@ -343,6 +443,10 @@ export default function MarriageBureauDemo() {
       else await window.storage.delete("sb_session", false);
     } catch {}
   }
+
+  useEffect(() => {
+    if (session && session.access_token) fetchProfilesRemote(session.access_token);
+  }, [session]);
 
   async function handleSignup() {
     setAuthError("");
@@ -584,6 +688,12 @@ export default function MarriageBureauDemo() {
       {!storageOK && (
         <div className="px-5 py-1.5 text-xs text-center" style={{ background: "#F4DCC7", color: "#6B4A1F" }}>
           Save mein dikkat aayi — data is session ke liye chalega par persist nahi hoga.
+        </div>
+      )}
+      {profilesRemoteError && (
+        <div className="px-5 py-1.5 text-xs text-center flex items-center justify-center gap-2" style={{ background: "#F4DCC7", color: "#6B4A1F" }}>
+          {profilesRemoteError}
+          <button onClick={() => setProfilesRemoteError("")} style={{ fontWeight: 700 }}>✕</button>
         </div>
       )}
 
@@ -879,6 +989,7 @@ export default function MarriageBureauDemo() {
                 </div>
               )}
 
+              {profileSubmitError && <p className="text-xs mt-2 text-center" style={{ color: "#B3261E" }}>{profileSubmitError}</p>}
               <div className="flex gap-2 mt-5">
                 {profileStep > 1 && (
                   <button onClick={() => setProfileStep((s) => s - 1)} className="flex-1 py-2.5 rounded-full text-sm font-semibold" style={{ border: "1px solid #7A1F2B", color: "#7A1F2B" }}>
@@ -890,8 +1001,8 @@ export default function MarriageBureauDemo() {
                     Next
                   </button>
                 ) : (
-                  <button onClick={submitProfile} className="flex-1 py-2.5 rounded-full text-sm font-semibold" style={{ background: "#3E5C50", color: "#FBF6EE" }}>
-                    Submit Profile
+                  <button onClick={submitProfile} disabled={profileSubmitting} className="flex-1 py-2.5 rounded-full text-sm font-semibold" style={{ background: "#3E5C50", color: "#FBF6EE" }}>
+                    {profileSubmitting ? "Saving…" : "Submit Profile"}
                   </button>
                 )}
               </div>
