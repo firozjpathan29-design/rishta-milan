@@ -1098,8 +1098,7 @@ export default function MarriageBureauDemo() {
                 {Object.keys(interests).length === 0 ? (
                   <p className="text-sm text-center p-6" style={{ color: "#6B5B4D" }}>Koi interest bheja nahi hai abhi. Browse tab se kisi ko interest bhejein.</p>
                 ) : (
-                  Object.keys(interests).map((idStr) => {
-                    const id = Number(idStr);
+                  Object.keys(interests).map((id) => {
                     const p = profiles.find((pr) => pr.id === id);
                     if (!p) return null;
                     const thread = conversations[id] || [];
