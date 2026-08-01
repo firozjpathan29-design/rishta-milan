@@ -95,11 +95,6 @@ export default function MarriageBureauDemo() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatDraft, setChatDraft] = useState("");
 
-  const myProfile = useMemo(
-    () => (session ? profiles.find((p) => p.user_id === session.user.id) : null),
-    [profiles, session]
-  );
-
   async function fetchInterestsRemote(token, myId) {
     try {
       const res = await fetch(
@@ -137,13 +132,6 @@ export default function MarriageBureauDemo() {
       console.error("Fetch messages failed:", err);
     }
   }
-
-  useEffect(() => {
-    if (session && myProfile) {
-      fetchInterestsRemote(session.access_token, myProfile.id);
-      fetchMessagesRemote(session.access_token, myProfile.id);
-    }
-  }, [session, myProfile && myProfile.id]);
 
   // ---------- Video call (self-camera preview only, mock connection — no WebRTC/Agora API cost) ----------
   const [callProfile, setCallProfile] = useState(null);
@@ -488,6 +476,18 @@ export default function MarriageBureauDemo() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [session, setSession] = useState(null); // { access_token, user }
+
+  const myProfile = useMemo(
+    () => (session ? profiles.find((p) => p.user_id === session.user.id) : null),
+    [profiles, session]
+  );
+
+  useEffect(() => {
+    if (session && myProfile) {
+      fetchInterestsRemote(session.access_token, myProfile.id);
+      fetchMessagesRemote(session.access_token, myProfile.id);
+    }
+  }, [session, myProfile && myProfile.id]);
 
   async function supaAuth(path, body) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
