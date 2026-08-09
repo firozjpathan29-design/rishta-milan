@@ -382,6 +382,75 @@ export default function MarriageBureauDemo() {
     }
   }
 
+  // ---------- Block & Report — real Supabase tables ----------
+  const [blocked, setBlocked] = useState({}); // { [profileId]: true }
+  const [reportTarget, setReportTarget] = useState(null); // profile being reported
+  const [reportReason, setReportReason] = useState("");
+  const [reportSent, setReportSent] = useState(false);
+
+  async function fetchBlockedRemote(token, myId) {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/blocks?select=blocked_profile_id&from_profile_id=eq.${myId}`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) return;
+      const rows = await res.json();
+      const map = {};
+      rows.forEach((r) => (map[r.blocked_profile_id] = true));
+      setBlocked(map);
+    } catch (err) {
+      console.error("Fetch blocked failed:", err);
+    }
+  }
+
+  async function blockProfile(toId) {
+    if (!myProfile) {
+      setInterestError("Block karne ke liye pehle apni profile banayein.");
+      return;
+    }
+    setBlocked((b) => ({ ...b, [toId]: true }));
+    if (selected && selected.id === toId) setSelected(null);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/blocks`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ from_profile_id: myProfile.id, blocked_profile_id: toId }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setBlocked((b) => {
+        const next = { ...b };
+        delete next[toId];
+        return next;
+      });
+      setInterestError("Block save nahi hua, dobara try karein.");
+    }
+  }
+
+  async function submitReport() {
+    if (!myProfile || !reportTarget || !reportReason.trim()) return;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/reports`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ from_profile_id: myProfile.id, reported_profile_id: reportTarget.id, reason: reportReason.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      setReportSent(true);
+    } catch {
+      setInterestError("Report bhejte waqt error aayi.");
+    }
+  }
+
   async function sendInterestRemote(toId) {
     if (!myProfile) {
       setInterestError("Interest bhejne ke liye pehle apni profile banayein.");
@@ -548,6 +617,7 @@ export default function MarriageBureauDemo() {
       fetchInterestsRemote(session.access_token, myProfile.id);
       fetchMessagesRemote(session.access_token, myProfile.id);
       fetchShortlistRemote(session.access_token, myProfile.id);
+      fetchBlockedRemote(session.access_token, myProfile.id);
     }
   }, [session, myProfile && myProfile.id]);
 
@@ -621,6 +691,7 @@ export default function MarriageBureauDemo() {
 
   const filtered = useMemo(() => {
     return profiles.filter((p) => {
+      if (blocked[p.id]) return false;
       if (filters.govt && p.job !== "govt") return false;
       if (filters.business && p.job !== "business") return false;
       if (filters.nri && p.job !== "nri") return false;
@@ -629,7 +700,7 @@ export default function MarriageBureauDemo() {
       if (shortlistOnly && !shortlist[p.id]) return false;
       return true;
     });
-  }, [filters, profiles, shortlistOnly, shortlist]);
+  }, [filters, profiles, shortlistOnly, shortlist, blocked]);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -1444,6 +1515,22 @@ export default function MarriageBureauDemo() {
                   {interests[selected.id] ? "Interest Sent ✓" : "Send Interest"}
                 </button>
               </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => { setReportTarget(selected); setReportReason(""); setReportSent(false); }}
+                  className="flex-1 py-1.5 rounded-full text-xs font-semibold"
+                  style={{ color: "#6B5B4D" }}
+                >
+                  Report
+                </button>
+                <button
+                  onClick={() => blockProfile(selected.id)}
+                  className="flex-1 py-1.5 rounded-full text-xs font-semibold"
+                  style={{ color: "#B3261E" }}
+                >
+                  Block
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1567,6 +1654,50 @@ export default function MarriageBureauDemo() {
                   Done
                 </button>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Report profile modal */}
+      {reportTarget && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "#00000077" }} onClick={() => setReportTarget(null)}>
+          <div className="bg-white rounded-2xl max-w-xs w-full p-5 card-shadow" onClick={(e) => e.stopPropagation()}>
+            {reportSent ? (
+              <div className="text-center py-4">
+                <Check size={28} color="#3E5C50" className="mx-auto mb-2" />
+                <p className="display text-lg mb-1" style={{ color: "#7A1F2B" }}>Report bhej diya</p>
+                <p className="text-xs mb-4" style={{ color: "#6B5B4D" }}>Hum jald hi review karenge.</p>
+                <button onClick={() => setReportTarget(null)} className="w-full py-2 rounded-full text-sm font-semibold" style={{ background: "#7A1F2B", color: "#FBF6EE" }}>
+                  Close
+                </button>
+              </div>
+            ) : (
+              <>
+                <h3 className="display text-lg mb-1" style={{ color: "#7A1F2B" }}>Report {reportTarget.name}</h3>
+                <p className="text-xs mb-3" style={{ color: "#6B5B4D" }}>Batayein kya problem hai is profile mein</p>
+                <textarea
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  placeholder="Reason likhein…"
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-3"
+                  style={{ border: "1px solid #C89B3C55" }}
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => setReportTarget(null)} className="flex-1 py-2 rounded-full text-sm font-semibold" style={{ border: "1px solid #7A1F2B", color: "#7A1F2B" }}>
+                    Cancel
+                  </button>
+                  <button
+                    onClick={submitReport}
+                    disabled={!reportReason.trim()}
+                    className="flex-1 py-2 rounded-full text-sm font-semibold"
+                    style={{ background: reportReason.trim() ? "#B3261E" : "#C89B3C55", color: "#FBF6EE" }}
+                  >
+                    Submit
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
