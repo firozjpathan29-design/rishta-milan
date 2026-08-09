@@ -77,6 +77,7 @@ export default function MarriageBureauDemo() {
   const [tab, setTab] = useState("browse");
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
   const [showFilters, setShowFilters] = useState(false);
+  const [shortlistOnly, setShortlistOnly] = useState(false);
   const [selected, setSelected] = useState(null);
   const [interests, setInterests] = useState({});
   const [plan, setPlan] = useState("free");
@@ -321,6 +322,66 @@ export default function MarriageBureauDemo() {
   }
 
   const [interestError, setInterestError] = useState("");
+
+  // ---------- Shortlist / Favorites — real Supabase table ----------
+  const [shortlist, setShortlist] = useState({}); // { [profileId]: true }
+  async function fetchShortlistRemote(token, myId) {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/shortlists?select=to_profile_id&from_profile_id=eq.${myId}`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) return;
+      const rows = await res.json();
+      const map = {};
+      rows.forEach((r) => (map[r.to_profile_id] = true));
+      setShortlist(map);
+    } catch (err) {
+      console.error("Fetch shortlist failed:", err);
+    }
+  }
+  async function toggleShortlist(toId) {
+    if (!myProfile) {
+      setInterestError("Shortlist karne ke liye pehle apni profile banayein.");
+      return;
+    }
+    const isShortlisted = !!shortlist[toId];
+    setShortlist((s) => {
+      const next = { ...s };
+      if (isShortlisted) delete next[toId];
+      else next[toId] = true;
+      return next;
+    });
+    try {
+      if (isShortlisted) {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/shortlists?from_profile_id=eq.${myProfile.id}&to_profile_id=eq.${toId}`,
+          { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` } }
+        );
+        if (!res.ok) throw new Error();
+      } else {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/shortlists`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ from_profile_id: myProfile.id, to_profile_id: toId }),
+        });
+        if (!res.ok) throw new Error();
+      }
+    } catch {
+      setShortlist((s) => {
+        const next = { ...s };
+        if (isShortlisted) next[toId] = true;
+        else delete next[toId];
+        return next;
+      });
+      setInterestError("Shortlist save nahi hui, dobara try karein.");
+    }
+  }
+
   async function sendInterestRemote(toId) {
     if (!myProfile) {
       setInterestError("Interest bhejne ke liye pehle apni profile banayein.");
@@ -486,6 +547,7 @@ export default function MarriageBureauDemo() {
     if (session && myProfile) {
       fetchInterestsRemote(session.access_token, myProfile.id);
       fetchMessagesRemote(session.access_token, myProfile.id);
+      fetchShortlistRemote(session.access_token, myProfile.id);
     }
   }, [session, myProfile && myProfile.id]);
 
@@ -564,9 +626,10 @@ export default function MarriageBureauDemo() {
       if (filters.nri && p.job !== "nri") return false;
       if (filters.single && p.marital !== "single") return false;
       if (filters.widow && !(p.marital === "widow" || p.marital === "widower")) return false;
+      if (shortlistOnly && !shortlist[p.id]) return false;
       return true;
     });
-  }, [filters, profiles]);
+  }, [filters, profiles, shortlistOnly, shortlist]);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -803,6 +866,17 @@ export default function MarriageBureauDemo() {
                 <Icon size={12} /> {label}
               </button>
             ))}
+            <button
+              onClick={() => setShortlistOnly((s) => !s)}
+              className="chip"
+              style={{
+                background: shortlistOnly ? "#7A1F2B" : "#F4DCC7",
+                color: shortlistOnly ? "#FBF6EE" : "#6B4A1F",
+                border: "1px solid #C89B3C55",
+              }}
+            >
+              <Heart size={12} fill={shortlistOnly ? "#FBF6EE" : "none"} /> Shortlisted
+            </button>
           </div>
 
           {filtered.length === 0 ? (
@@ -816,7 +890,15 @@ export default function MarriageBureauDemo() {
                 const meta = JOB_META[p.job];
                 const Icon = meta.icon;
                 return (
-                  <div key={p.id} className="arch-card card-shadow bg-white overflow-hidden">
+                  <div key={p.id} className="arch-card card-shadow bg-white overflow-hidden" style={{ position: "relative" }}>
+                    <button
+                      onClick={() => toggleShortlist(p.id)}
+                      title="Shortlist"
+                      className="flex items-center justify-center"
+                      style={{ position: "absolute", top: 8, right: 8, zIndex: 5, width: 26, height: 26, borderRadius: "50%", background: "#FBF6EEcc" }}
+                    >
+                      <Heart size={14} color="#7A1F2B" fill={shortlist[p.id] ? "#7A1F2B" : "none"} />
+                    </button>
                     <div className="arch-top">
                       {p.photoUrl ? (
                         <img src={p.photoUrl} alt={p.name} style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover", border: "2px solid #C89B3C" }} />
@@ -1344,14 +1426,24 @@ export default function MarriageBureauDemo() {
                 <p><b>Marital Status:</b> {selected.marital}</p>
                 <p><b>Verified:</b> {selected.verified ? "Yes ✓" : "Pending"}</p>
               </div>
-              <button
-                onClick={() => { sendInterestRemote(selected.id); }}
-                disabled={interests[selected.id]}
-                className="w-full mt-4 py-2 rounded-full text-sm font-semibold"
-                style={{ background: interests[selected.id] ? "#3E5C50" : "#7A1F2B", color: "#FBF6EE" }}
-              >
-                {interests[selected.id] ? "Interest Sent ✓" : "Send Interest"}
-              </button>
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => toggleShortlist(selected.id)}
+                  title="Shortlist"
+                  className="py-2 px-3 rounded-full text-sm font-semibold flex items-center justify-center"
+                  style={{ border: "1px solid #7A1F2B" }}
+                >
+                  <Heart size={16} color="#7A1F2B" fill={shortlist[selected.id] ? "#7A1F2B" : "none"} />
+                </button>
+                <button
+                  onClick={() => { sendInterestRemote(selected.id); }}
+                  disabled={interests[selected.id]}
+                  className="flex-1 py-2 rounded-full text-sm font-semibold"
+                  style={{ background: interests[selected.id] ? "#3E5C50" : "#7A1F2B", color: "#FBF6EE" }}
+                >
+                  {interests[selected.id] ? "Interest Sent ✓" : "Send Interest"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
