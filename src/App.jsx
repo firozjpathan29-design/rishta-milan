@@ -521,6 +521,7 @@ export default function MarriageBureauDemo() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [profileCreated, setProfileCreated] = useState(false);
   const [photoError, setPhotoError] = useState("");
+  const [extraPhotos, setExtraPhotos] = useState([]); // [{file, previewUrl}]
 
   function updateForm(key, val) {
     setForm((f) => ({ ...f, [key]: val }));
@@ -1189,7 +1190,47 @@ export default function MarriageBureauDemo() {
                       }}
                     />
                   </div>
-                  {photoError && <p className="text-xs mb-2" style={{ color: "#B3261E" }}>{photoError}</p>}
+                {photoError && <p className="text-xs mb-2" style={{ color: "#B3261E" }}>{photoError}</p>}
+
+<p className="text-xs font-semibold mb-2 mt-3" style={{ color: "#6B5B4D" }}>Aur photos add karein (optional, max 5)</p>
+<div className="flex flex-wrap gap-2 mb-3">
+  {extraPhotos.map((p, i) => (
+    <div key={i} className="relative" style={{ width: 56, height: 56 }}>
+      <img src={p.previewUrl} alt="" className="w-full h-full object-cover rounded-lg" style={{ border: "1px solid #C89B3C55" }} />
+      <button
+        onClick={() => setExtraPhotos((arr) => arr.filter((_, idx) => idx !== i))}
+        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
+        style={{ background: "#7A1F2B" }}
+      >
+        <X size={10} color="#fff" />
+      </button>
+    </div>
+  ))}
+  {extraPhotos.length < 5 && (
+    <label
+      htmlFor="extra-photo-input"
+      className="flex items-center justify-center rounded-lg cursor-pointer"
+      style={{ width: 56, height: 56, border: "1px dashed #C89B3C77", color: "#7A1F2B", fontSize: 22 }}
+    >
+      +
+    </label>
+  )}
+  <input
+    id="extra-photo-input"
+    type="file"
+    accept="image/*"
+    className="hidden"
+    onChange={(e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) { setPhotoError("Sirf image file allowed hai (jpg/png)."); return; }
+      if (file.size > 3 * 1024 * 1024) { setPhotoError("Har photo 3MB se chhoti honi chahiye."); return; }
+      setPhotoError("");
+      setExtraPhotos((arr) => [...arr, { file, previewUrl: URL.createObjectURL(file) }]);
+      e.target.value = "";
+    }}
+  />
+</div>
                   <p className="text-xs mb-3" style={{ color: "#6B5B4D" }}>Ya ek icon chunein:</p>
                   <div className="flex gap-2 mb-4">
                     {["🌸", "🌼", "🌷", "🌻", "🌺", "🌹"].map((e) => (
