@@ -59,6 +59,64 @@ export default function MarriageBureauDemo() {
     };
   }
 
+  const sessionRef = useRef(null);
+
+  // ---------- Session / token refresh helpers ----------
+  async function refreshAccessToken(current) {
+    const s = current || sessionRef.current;
+    if (!s || !s.refresh_token) return null;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ refresh_token: s.refresh_token }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.access_token) return null;
+      const next = {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || s.refresh_token,
+        user: data.user || s.user,
+      };
+      await saveSession(next);
+      return next;
+    } catch (err) {
+      console.error("Token refresh failed:", err);
+      return null;
+    }
+  }
+
+  // Returns a valid access token, refreshing first if we have a refresh_token available.
+  // Call this right before any write/critical operation so a stale token doesn't cause "JWT expired".
+  async function getFreshToken() {
+    const s = sessionRef.current;
+    if (!s) return null;
+    if (s.refresh_token) {
+      const refreshed = await refreshAccessToken(s);
+      if (refreshed) return refreshed.access_token;
+    }
+    return s.access_token;
+  }
+
+  // Generic authenticated fetch: does the request, and if it fails with an expired/invalid
+  // JWT, refreshes the token once and retries automatically.
+  async function authFetch(url, options = {}) {
+    const s = sessionRef.current;
+    let token = s ? s.access_token : null;
+    const withAuth = (t) => ({
+      ...options,
+      headers: { ...(options.headers || {}), Authorization: `Bearer ${t}` },
+    });
+    let res = await fetch(url, withAuth(token));
+    if (res.status === 401 || res.status === 403) {
+      const refreshed = await refreshAccessToken(s);
+      if (refreshed) {
+        res = await fetch(url, withAuth(refreshed.access_token));
+      }
+    }
+    return res;
+  }
+
   async function fetchProfilesRemote(token) {
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=*&order=created_at.desc`, {
@@ -81,25 +139,26 @@ export default function MarriageBureauDemo() {
   const [selected, setSelected] = useState(null);
   const [selectedExtraPhotos, setSelectedExtraPhotos] = useState([]);
 
-useEffect(() => {
-  if (!selected || !session) {
-    setSelectedExtraPhotos([]);
-    return;
-  }
-  (async () => {
-    try {
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/profile_photos?select=photo_url&profile_id=eq.${selected.id}`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` } }
-      );
-      if (!res.ok) return;
-      const rows = await res.json();
-      setSelectedExtraPhotos(rows.map((r) => r.photo_url));
-    } catch (err) {
-      console.error("Fetch extra photos failed:", err);
+  useEffect(() => {
+    if (!selected || !session) {
+      setSelectedExtraPhotos([]);
+      return;
     }
-  })();
-}, [selected]);
+    (async () => {
+      try {
+        const res = await authFetch(
+          `${SUPABASE_URL}/rest/v1/profile_photos?select=photo_url&profile_id=eq.${selected.id}`,
+          { headers: { apikey: SUPABASE_ANON_KEY } }
+        );
+        if (!res.ok) return;
+        const rows = await res.json();
+        setSelectedExtraPhotos(rows.map((r) => r.photo_url));
+      } catch (err) {
+        console.error("Fetch extra photos failed:", err);
+      }
+    })();
+  }, [selected]);
+
   const [interests, setInterests] = useState({});
   const [plan, setPlan] = useState("free");
   const [dataLoading, setDataLoading] = useState(true);
@@ -119,9 +178,9 @@ useEffect(() => {
 
   async function fetchInterestsRemote(token, myId) {
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${SUPABASE_URL}/rest/v1/interests?select=from_profile_id,to_profile_id&or=(from_profile_id.eq.${myId},to_profile_id.eq.${myId})`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+        { headers: { apikey: SUPABASE_ANON_KEY } }
       );
       if (!res.ok) return;
       const rows = await res.json();
@@ -137,9 +196,9 @@ useEffect(() => {
 
   async function fetchMessagesRemote(token, myId) {
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${SUPABASE_URL}/rest/v1/messages?select=*&or=(from_profile_id.eq.${myId},to_profile_id.eq.${myId})&order=created_at.asc`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+        { headers: { apikey: SUPABASE_ANON_KEY } }
       );
       if (!res.ok) return;
       const rows = await res.json();
@@ -234,8 +293,6 @@ useEffect(() => {
   }
 
   // ---------- Real persistence (window.storage — survives refresh, no server cost) ----------
-  // Profiles are "shared" so every visitor sees profiles others created — like a real matchmaking DB.
-  // Interests & plan are "personal" — specific to this user.
   useEffect(() => {
     (async () => {
       try {
@@ -268,7 +325,10 @@ useEffect(() => {
           if (res && res.value) {
             const s = JSON.parse(res.value);
             setSession(s);
+            sessionRef.current = s;
             setAuthed(true);
+            // proactively refresh on load in case the saved token is already stale
+            refreshAccessToken(s);
           }
         } catch {}
       } catch (err) {
@@ -279,6 +339,15 @@ useEffect(() => {
       }
     })();
   }, []);
+
+  // Periodically refresh the token in the background so it never goes stale mid-session.
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(() => {
+      refreshAccessToken();
+    }, 20 * 60 * 1000); // every 20 minutes
+    return () => clearInterval(interval);
+  }, [session && session.refresh_token]);
 
   async function saveProfiles(next) {
     setProfiles(next);
@@ -302,18 +371,13 @@ useEffect(() => {
     if (!p) return;
     setProfiles((ps) => ps.map((x) => (x.id === id ? { ...x, verified: !x.verified } : x)));
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
+      const res = await authFetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ verified: !p.verified }),
       });
       if (!res.ok) throw new Error("not allowed");
     } catch {
-      // RLS only allows editing profiles you created — revert if it wasn't yours
       setProfiles((ps) => ps.map((x) => (x.id === id ? { ...x, verified: p.verified } : x)));
       setProfilesRemoteError("Sirf apni banayi profile verify/edit kar sakte ho (RLS security) — dusron ki profile ke liye admin backend chahiye.");
     }
@@ -322,9 +386,9 @@ useEffect(() => {
     const prev = profiles;
     setProfiles((ps) => ps.filter((x) => x.id !== id));
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
+      const res = await authFetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
         method: "DELETE",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+        headers: { apikey: SUPABASE_ANON_KEY },
       });
       if (!res.ok) throw new Error("not allowed");
     } catch {
@@ -348,9 +412,9 @@ useEffect(() => {
   const [shortlist, setShortlist] = useState({}); // { [profileId]: true }
   async function fetchShortlistRemote(token, myId) {
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${SUPABASE_URL}/rest/v1/shortlists?select=to_profile_id&from_profile_id=eq.${myId}`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+        { headers: { apikey: SUPABASE_ANON_KEY } }
       );
       if (!res.ok) return;
       const rows = await res.json();
@@ -375,19 +439,15 @@ useEffect(() => {
     });
     try {
       if (isShortlisted) {
-        const res = await fetch(
+        const res = await authFetch(
           `${SUPABASE_URL}/rest/v1/shortlists?from_profile_id=eq.${myProfile.id}&to_profile_id=eq.${toId}`,
-          { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` } }
+          { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY } }
         );
         if (!res.ok) throw new Error();
       } else {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/shortlists`, {
+        const res = await authFetch(`${SUPABASE_URL}/rest/v1/shortlists`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${session.access_token}`,
-          },
+          headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
           body: JSON.stringify({ from_profile_id: myProfile.id, to_profile_id: toId }),
         });
         if (!res.ok) throw new Error();
@@ -411,9 +471,9 @@ useEffect(() => {
 
   async function fetchBlockedRemote(token, myId) {
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${SUPABASE_URL}/rest/v1/blocks?select=blocked_profile_id&from_profile_id=eq.${myId}`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
+        { headers: { apikey: SUPABASE_ANON_KEY } }
       );
       if (!res.ok) return;
       const rows = await res.json();
@@ -433,13 +493,9 @@ useEffect(() => {
     setBlocked((b) => ({ ...b, [toId]: true }));
     if (selected && selected.id === toId) setSelected(null);
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/blocks`, {
+      const res = await authFetch(`${SUPABASE_URL}/rest/v1/blocks`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ from_profile_id: myProfile.id, blocked_profile_id: toId }),
       });
       if (!res.ok) throw new Error();
@@ -456,13 +512,9 @@ useEffect(() => {
   async function submitReport() {
     if (!myProfile || !reportTarget || !reportReason.trim()) return;
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/reports`, {
+      const res = await authFetch(`${SUPABASE_URL}/rest/v1/reports`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ from_profile_id: myProfile.id, reported_profile_id: reportTarget.id, reason: reportReason.trim() }),
       });
       if (!res.ok) throw new Error();
@@ -479,13 +531,9 @@ useEffect(() => {
     }
     setInterests((i) => ({ ...i, [toId]: true }));
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/interests`, {
+      const res = await authFetch(`${SUPABASE_URL}/rest/v1/interests`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ from_profile_id: myProfile.id, to_profile_id: toId, status: "sent" }),
       });
       if (!res.ok) throw new Error();
@@ -512,13 +560,9 @@ useEffect(() => {
     const optimistic = { from: "me", text, ts: new Date().toISOString() };
     setConversations((c) => ({ ...c, [activeChatId]: [...(c[activeChatId] || []), optimistic] }));
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
+      const res = await authFetch(`${SUPABASE_URL}/rest/v1/messages`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ from_profile_id: myProfile.id, to_profile_id: activeChatId, text }),
       });
       if (!res.ok) throw new Error();
@@ -561,6 +605,9 @@ useEffect(() => {
     setProfileSubmitError("");
     setProfileSubmitting(true);
     try {
+      // Get a guaranteed-fresh token before doing anything, so a stale token never blocks submission.
+      const freshToken = (await getFreshToken()) || session.access_token;
+
       const body = {
         user_id: session.user.id,
         role: role || "self",
@@ -592,7 +639,7 @@ useEffect(() => {
         headers: {
           "Content-Type": "application/json",
           apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${freshToken}`,
           Prefer: "return=representation",
         },
         body: JSON.stringify(body),
@@ -601,45 +648,42 @@ useEffect(() => {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || "Profile save nahi hui");
       }
-    const [row] = await res.json();
+      const [row] = await res.json();
 
-// Upload extra gallery photos to Supabase Storage + link in profile_photos table
-if (extraPhotos.length > 0) {
-  for (const p of extraPhotos) {
-    try {
-      const ext = p.file.name.split(".").pop() || "jpg";
-      const filePath = `${session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/profile-photos/${filePath}`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": p.file.type,
-        },
-        body: p.file,
-      });
-      if (!uploadRes.ok) continue;
-      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/profile-photos/${filePath}`;
-      await fetch(`${SUPABASE_URL}/rest/v1/profile_photos`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ profile_id: row.id, photo_url: publicUrl }),
-      });
-    } catch (err) {
-      console.error("Extra photo upload failed:", err);
-    }
-  }
-}
+      // Upload extra gallery photos to Supabase Storage + link in profile_photos table
+      if (extraPhotos.length > 0) {
+        for (const p of extraPhotos) {
+          try {
+            const ext = p.file.name.split(".").pop() || "jpg";
+            const filePath = `${session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+            const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/profile-photos/${filePath}`, {
+              method: "POST",
+              headers: {
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${freshToken}`,
+                "Content-Type": p.file.type,
+              },
+              body: p.file,
+            });
+            if (!uploadRes.ok) continue;
+            const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/profile-photos/${filePath}`;
+            await fetch(`${SUPABASE_URL}/rest/v1/profile_photos`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${freshToken}`,
+              },
+              body: JSON.stringify({ profile_id: row.id, photo_url: publicUrl }),
+            });
+          } catch (err) {
+            console.error("Extra photo upload failed:", err);
+          }
+        }
+      }
 
-// Upload extra gallery photos to Supabase Storage + link in profile_photos table
-
-
-setProfiles((ps) => [mapDbProfile(row), ...ps]);
-setProfileCreated(true);
+      setProfiles((ps) => [mapDbProfile(row), ...ps]);
+      setProfileCreated(true);
     } catch (err) {
       setProfileSubmitError(err.message);
     } finally {
@@ -647,13 +691,13 @@ setProfileCreated(true);
     }
   }
 
- function resetProfileForm() {
-  setForm(EMPTY_FORM);
-  setProfileStep(1);
-  setProfileCreated(false);
-  setPhotoError("");
-  setExtraPhotos([]);
-}
+  function resetProfileForm() {
+    setForm(EMPTY_FORM);
+    setProfileStep(1);
+    setProfileCreated(false);
+    setPhotoError("");
+    setExtraPhotos([]);
+  }
 
   // ---------- Auth — REAL Supabase Auth via REST (no SDK needed, zero extra cost) ----------
   const [authed, setAuthed] = useState(false);
@@ -664,7 +708,7 @@ setProfileCreated(true);
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [session, setSession] = useState(null); // { access_token, user }
+  const [session, setSession] = useState(null); // { access_token, refresh_token, user }
 
   const myProfile = useMemo(
     () => (session ? profiles.find((p) => p.user_id === session.user.id) : null),
@@ -693,6 +737,7 @@ setProfileCreated(true);
 
   async function saveSession(next) {
     setSession(next);
+    sessionRef.current = next;
     setAuthed(!!next);
     try {
       if (next) await window.storage.set("sb_session", JSON.stringify(next), false);
@@ -710,7 +755,7 @@ setProfileCreated(true);
     try {
       const data = await supaAuth("signup", { email, password, data: { role } });
       if (data.access_token) {
-        saveSession({ access_token: data.access_token, user: data.user });
+        saveSession({ access_token: data.access_token, refresh_token: data.refresh_token, user: data.user });
       } else {
         setAuthError("Signup ho gaya! Email check karke confirm karein, phir login karein.");
         setAuthMode("login");
@@ -733,7 +778,7 @@ setProfileCreated(true);
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_description || data.msg || "Login fail hua");
-      saveSession({ access_token: data.access_token, user: data.user });
+      saveSession({ access_token: data.access_token, refresh_token: data.refresh_token, user: data.user });
     } catch (err) {
       setAuthError(err.message);
     } finally {
@@ -1043,7 +1088,7 @@ setProfileCreated(true);
                       </div>
                       <p className="text-xs mb-2" style={{ color: "#6B5B4D" }}>{p.age} yrs · {p.city}</p>
                       <div className="motif-divider" />
-                            <p className="text-xs mb-1"><b>{p.edu}</b></p>
+                      <p className="text-xs mb-1"><b>{p.edu}</b></p>
                       <span className="chip mb-2" style={{ background: `${meta.color}15`, color: meta.color }}>
                         <Icon size={11} /> {meta.label}
                       </span>
@@ -1248,47 +1293,47 @@ setProfileCreated(true);
                       }}
                     />
                   </div>
-                {photoError && <p className="text-xs mb-2" style={{ color: "#B3261E" }}>{photoError}</p>}
+                  {photoError && <p className="text-xs mb-2" style={{ color: "#B3261E" }}>{photoError}</p>}
 
-<p className="text-xs font-semibold mb-2 mt-3" style={{ color: "#6B5B4D" }}>Aur photos add karein (optional, max 5)</p>
-<div className="flex flex-wrap gap-2 mb-3">
-  {extraPhotos.map((p, i) => (
-    <div key={i} className="relative" style={{ width: 56, height: 56 }}>
-      <img src={p.previewUrl} alt="" className="w-full h-full object-cover rounded-lg" style={{ border: "1px solid #C89B3C55" }} />
-      <button
-        onClick={() => setExtraPhotos((arr) => arr.filter((_, idx) => idx !== i))}
-        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
-        style={{ background: "#7A1F2B" }}
-      >
-        <X size={10} color="#fff" />
-      </button>
-    </div>
-  ))}
-  {extraPhotos.length < 5 && (
-    <label
-      htmlFor="extra-photo-input"
-      className="flex items-center justify-center rounded-lg cursor-pointer"
-      style={{ width: 56, height: 56, border: "1px dashed #C89B3C77", color: "#7A1F2B", fontSize: 22 }}
-    >
-      +
-    </label>
-  )}
-  <input
-    id="extra-photo-input"
-    type="file"
-    accept="image/*"
-    className="hidden"
-    onChange={(e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      if (!file.type.startsWith("image/")) { setPhotoError("Sirf image file allowed hai (jpg/png)."); return; }
-      if (file.size > 3 * 1024 * 1024) { setPhotoError("Har photo 3MB se chhoti honi chahiye."); return; }
-      setPhotoError("");
-      setExtraPhotos((arr) => [...arr, { file, previewUrl: URL.createObjectURL(file) }]);
-      e.target.value = "";
-    }}
-  />
-</div>
+                  <p className="text-xs font-semibold mb-2 mt-3" style={{ color: "#6B5B4D" }}>Aur photos add karein (optional, max 5)</p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {extraPhotos.map((p, i) => (
+                      <div key={i} className="relative" style={{ width: 56, height: 56 }}>
+                        <img src={p.previewUrl} alt="" className="w-full h-full object-cover rounded-lg" style={{ border: "1px solid #C89B3C55" }} />
+                        <button
+                          onClick={() => setExtraPhotos((arr) => arr.filter((_, idx) => idx !== i))}
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
+                          style={{ background: "#7A1F2B" }}
+                        >
+                          <X size={10} color="#fff" />
+                        </button>
+                      </div>
+                    ))}
+                    {extraPhotos.length < 5 && (
+                      <label
+                        htmlFor="extra-photo-input"
+                        className="flex items-center justify-center rounded-lg cursor-pointer"
+                        style={{ width: 56, height: 56, border: "1px dashed #C89B3C77", color: "#7A1F2B", fontSize: 22 }}
+                      >
+                        +
+                      </label>
+                    )}
+                    <input
+                      id="extra-photo-input"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files && e.target.files[0];
+                        if (!file) return;
+                        if (!file.type.startsWith("image/")) { setPhotoError("Sirf image file allowed hai (jpg/png)."); return; }
+                        if (file.size > 3 * 1024 * 1024) { setPhotoError("Har photo 3MB se chhoti honi chahiye."); return; }
+                        setPhotoError("");
+                        setExtraPhotos((arr) => [...arr, { file, previewUrl: URL.createObjectURL(file) }]);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
                   <p className="text-xs mb-3" style={{ color: "#6B5B4D" }}>Ya ek icon chunein:</p>
                   <div className="flex gap-2 mb-4">
                     {["🌸", "🌼", "🌷", "🌻", "🌺", "🌹"].map((e) => (
@@ -1586,19 +1631,19 @@ setProfileCreated(true);
               <h2 className="display text-2xl">{selected.name}</h2>
               <p className="text-sm mb-3" style={{ color: "#6B5B4D" }}>{selected.age} yrs · {selected.city} · {selected.religion}</p>
               <div className="motif-divider" />
-{selectedExtraPhotos.length > 0 && (
-  <div className="flex gap-2 mb-2 flex-wrap">
-    {selectedExtraPhotos.map((url, i) => (
-      <img
-        key={i}
-        src={url}
-        alt=""
-        className="rounded-lg object-cover"
-        style={{ width: 56, height: 56, border: "1px solid #C89B3C55" }}
-      />
-    ))}
-  </div>
-)}
+              {selectedExtraPhotos.length > 0 && (
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  {selectedExtraPhotos.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="rounded-lg object-cover"
+                      style={{ width: 56, height: 56, border: "1px solid #C89B3C55" }}
+                    />
+                  ))}
+                </div>
+              )}
               <div className="text-sm space-y-1.5 mt-2" style={{ color: "#4A3F35" }}>
                 {(selected.height || selected.weight || selected.complexion || selected.build) && (
                   <p><b>Physical:</b> {[selected.height, selected.weight && `${selected.weight} kg`, selected.complexion, selected.build].filter(Boolean).join(" · ")}</p>
