@@ -79,6 +79,27 @@ export default function MarriageBureauDemo() {
   const [showFilters, setShowFilters] = useState(false);
   const [shortlistOnly, setShortlistOnly] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [selectedExtraPhotos, setSelectedExtraPhotos] = useState([]);
+
+useEffect(() => {
+  if (!selected || !session) {
+    setSelectedExtraPhotos([]);
+    return;
+  }
+  (async () => {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/profile_photos?select=photo_url&profile_id=eq.${selected.id}`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` } }
+      );
+      if (!res.ok) return;
+      const rows = await res.json();
+      setSelectedExtraPhotos(rows.map((r) => r.photo_url));
+    } catch (err) {
+      console.error("Fetch extra photos failed:", err);
+    }
+  })();
+}, [selected]);
   const [interests, setInterests] = useState({});
   const [plan, setPlan] = useState("free");
   const [dataLoading, setDataLoading] = useState(true);
@@ -1022,6 +1043,19 @@ setProfileCreated(true);
                       </div>
                       <p className="text-xs mb-2" style={{ color: "#6B5B4D" }}>{p.age} yrs · {p.city}</p>
                       <div className="motif-divider" />
+                      {selectedExtraPhotos.length > 0 && (
+  <div className="flex gap-2 mb-2 flex-wrap">
+    {selectedExtraPhotos.map((url, i) => (
+      <img
+        key={i}
+        src={url}
+        alt=""
+        className="rounded-lg object-cover"
+        style={{ width: 56, height: 56, border: "1px solid #C89B3C55" }}
+      />
+    ))}
+  </div>
+)}
                       <p className="text-xs mb-1"><b>{p.edu}</b></p>
                       <span className="chip mb-2" style={{ background: `${meta.color}15`, color: meta.color }}>
                         <Icon size={11} /> {meta.label}
