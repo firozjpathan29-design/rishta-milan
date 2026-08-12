@@ -1606,6 +1606,38 @@ async function fetchAdminReports() {
                   </div>
                 )}
               </div>
+                {/* Reports */}
+              <div className="card-shadow bg-white rounded-2xl overflow-hidden mt-5">
+                <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #F4DCC7" }}>
+                  <h3 className="font-semibold text-sm">Reports ({adminReports.length})</h3>
+                </div>
+                {adminReportsLoading ? (
+                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Loading…</p>
+                ) : adminReports.length === 0 ? (
+                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Koi report nahi hai abhi.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ background: "#FBF6EE", color: "#6B5B4D" }}>
+                          <th className="text-left px-4 py-2 font-semibold">Reported Profile ID</th>
+                          <th className="text-left px-4 py-2 font-semibold">Reason</th>
+                          <th className="text-left px-4 py-2 font-semibold">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminReports.map((r) => (
+                          <tr key={r.id} style={{ borderTop: "1px solid #F4DCC722" }}>
+                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{r.reported_profile_id}</td>
+                            <td className="px-4 py-2.5">{r.reason}</td>
+                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{new Date(r.created_at).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
