@@ -1569,12 +1569,7 @@ async function fetchAdminReports() {
               </div>
               <p className="text-xs mb-5" style={{ color: "#C89B3C" }}>*Sample projection from the blueprint — real revenue tracking needs a payments backend, isn't live data.</p>
 
-              {/* Profile management */}
-              <div className="card-shadow bg-white rounded-2xl overflow-hidden">
-                <div className="px-4 py-3" style={{ borderBottom: "1px solid #F4DCC7" }}>
-                  <h3 className="font-semibold text-sm">Profile Management</h3>
-                </div>
-                {/* Reports */}
+              {/* Reports */}
               <div className="card-shadow bg-white rounded-2xl overflow-hidden mt-5">
                 <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #F4DCC7" }}>
                   <h3 className="font-semibold text-sm">Reports ({adminReports.length})</h3>
@@ -1604,6 +1599,8 @@ async function fetchAdminReports() {
                       </tbody>
                     </table>
                   </div>
+                )}
+              </div>
                 )}
               </div>
                 {/* Reports */}
