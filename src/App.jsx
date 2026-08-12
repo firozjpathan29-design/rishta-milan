@@ -615,36 +615,7 @@ if (extraPhotos.length > 0) {
 }
 
 // Upload extra gallery photos to Supabase Storage + link in profile_photos table
-if (extraPhotos.length > 0) {
-  for (const p of extraPhotos) {
-    try {
-      const ext = p.file.name.split(".").pop() || "jpg";
-      const filePath = `${session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/profile-photos/${filePath}`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": p.file.type,
-        },
-        body: p.file,
-      });
-      if (!uploadRes.ok) continue;
-      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/profile-photos/${filePath}`;
-      await fetch(`${SUPABASE_URL}/rest/v1/profile_photos`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ profile_id: row.id, photo_url: publicUrl }),
-      });
-    } catch (err) {
-      console.error("Extra photo upload failed:", err);
-    }
-  }
-}
+
 
 setProfiles((ps) => [mapDbProfile(row), ...ps]);
 setProfileCreated(true);
