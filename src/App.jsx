@@ -1043,20 +1043,7 @@ setProfileCreated(true);
                       </div>
                       <p className="text-xs mb-2" style={{ color: "#6B5B4D" }}>{p.age} yrs · {p.city}</p>
                       <div className="motif-divider" />
-                      {selectedExtraPhotos.length > 0 && (
-  <div className="flex gap-2 mb-2 flex-wrap">
-    {selectedExtraPhotos.map((url, i) => (
-      <img
-        key={i}
-        src={url}
-        alt=""
-        className="rounded-lg object-cover"
-        style={{ width: 56, height: 56, border: "1px solid #C89B3C55" }}
-      />
-    ))}
-  </div>
-)}
-                      <p className="text-xs mb-1"><b>{p.edu}</b></p>
+                            <p className="text-xs mb-1"><b>{p.edu}</b></p>
                       <span className="chip mb-2" style={{ background: `${meta.color}15`, color: meta.color }}>
                         <Icon size={11} /> {meta.label}
                       </span>
