@@ -975,6 +975,23 @@ export default function MarriageBureauDemo() {
               </button>
             ))}
           </nav>
+         <button
+  onClick={() => setTab("chat")}
+  title="Notifications"
+  className="ml-1 p-2 rounded-full relative"
+  style={{ color: "#F4DCC7" }}
+>
+  <MessageCircle size={16} />
+  {Object.keys(interests).length > 0 && (
+    <span
+      className="absolute flex items-center justify-center"
+      style={{
+        top: 2, right: 2, width: 8, height: 8, borderRadius: "50%",
+        background: "#C89B3C",
+      }}
+    />
+  )}
+</button>
           <button
             onClick={handleLogout}
             title="Logout"
