@@ -341,13 +341,7 @@ export default function MarriageBureauDemo() {
   }, []);
 
   // Periodically refresh the token in the background so it never goes stale mid-session.
-  useEffect(() => {
-    if (!session) return;
-    const interval = setInterval(() => {
-      refreshAccessToken();
-    }, 20 * 60 * 1000); // every 20 minutes
-    return () => clearInterval(interval);
-  }, [session && session.refresh_token]);
+
 
   async function saveProfiles(next) {
     setProfiles(next);
@@ -709,6 +703,14 @@ export default function MarriageBureauDemo() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [session, setSession] = useState(null); // { access_token, refresh_token, user }
+  // Periodically refresh the token in the background so it never goes stale mid-session.
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(() => {
+      refreshAccessToken();
+    }, 20 * 60 * 1000); // every 20 minutes
+    return () => clearInterval(interval);
+  }, [session && session.refresh_token]);
 
   const myProfile = useMemo(
     () => (session ? profiles.find((p) => p.user_id === session.user.id) : null),
