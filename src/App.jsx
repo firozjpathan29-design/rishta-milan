@@ -1528,7 +1528,15 @@ async function fetchAdminReports() {
               />
               {adminPinError && <p className="text-xs mb-2" style={{ color: "#B3261E" }}>{adminPinError}</p>}
               <button
-                onClick={() => (adminPin === ADMIN_PIN ? setAdminAuthed(true) : setAdminPinError("Galat PIN. Demo ke liye 9999 try karein."))}
+                onClick={() => {
+  if (adminPin === ADMIN_PIN) {
+    setAdminAuthed(true);
+    fetchAdminReports();
+  } else {
+    setAdminPinError("Galat PIN. Demo ke liye 9999 try karein.");
+  }
+}}
+               liye 9999 try karein."))}
                 disabled={adminPin.length !== 4}
                 className="w-full py-2.5 rounded-full text-sm font-semibold"
                 style={{ background: adminPin.length === 4 ? "#7A1F2B" : "#C89B3C55", color: "#FBF6EE" }}
