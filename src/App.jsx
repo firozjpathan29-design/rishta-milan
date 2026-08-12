@@ -356,6 +356,25 @@ export default function MarriageBureauDemo() {
 
   // ---------- Admin (mock PIN gate — local only, no separate auth backend) ----------
   const [adminAuthed, setAdminAuthed] = useState(false);
+  const [adminReports, setAdminReports] = useState([]);
+const [adminReportsLoading, setAdminReportsLoading] = useState(false);
+
+async function fetchAdminReports() {
+  setAdminReportsLoading(true);
+  try {
+    const res = await authFetch(`${SUPABASE_URL}/rest/v1/reports?select=*&order=created_at.desc`, {
+      headers: { apikey: SUPABASE_ANON_KEY },
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      setAdminReports(rows);
+    }
+  } catch (err) {
+    console.error("Fetch reports failed:", err);
+  } finally {
+    setAdminReportsLoading(false);
+  }
+}
   const [adminPin, setAdminPin] = useState("");
   const [adminPinError, setAdminPinError] = useState("");
   const ADMIN_PIN = "9999";
