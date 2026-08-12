@@ -1586,6 +1586,19 @@ setProfileCreated(true);
               <h2 className="display text-2xl">{selected.name}</h2>
               <p className="text-sm mb-3" style={{ color: "#6B5B4D" }}>{selected.age} yrs · {selected.city} · {selected.religion}</p>
               <div className="motif-divider" />
+{selectedExtraPhotos.length > 0 && (
+  <div className="flex gap-2 mb-2 flex-wrap">
+    {selectedExtraPhotos.map((url, i) => (
+      <img
+        key={i}
+        src={url}
+        alt=""
+        className="rounded-lg object-cover"
+        style={{ width: 56, height: 56, border: "1px solid #C89B3C55" }}
+      />
+    ))}
+  </div>
+)}
               <div className="text-sm space-y-1.5 mt-2" style={{ color: "#4A3F35" }}>
                 {(selected.height || selected.weight || selected.complexion || selected.build) && (
                   <p><b>Physical:</b> {[selected.height, selected.weight && `${selected.weight} kg`, selected.complexion, selected.build].filter(Boolean).join(" · ")}</p>
