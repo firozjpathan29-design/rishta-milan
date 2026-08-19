@@ -671,6 +671,15 @@ export default function MarriageBureauDemo() {
       fetchBlockedRemote(session.access_token, myProfile.id);
     }
   }, [session, myProfile && myProfile.id]);
+  
+  // Poll for new messages every 5 seconds while the chat tab is open — gives a "live" feel for free.
+  useEffect(() => {
+    if (tab !== "chat" || !session || !myProfile) return;
+    const interval = setInterval(() => {
+      fetchMessagesRemote(session.access_token, myProfile.id);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [tab, session, myProfile && myProfile.id]);
 
   async function supaAuth(path, body) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
