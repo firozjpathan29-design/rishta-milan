@@ -36,7 +36,8 @@ export default function MarriageBureauDemo() {
 
   function mapDbProfile(row) {
     return {
-      id: row.id, user_id: row.user_id, name: row.full_name, age: row.age ?? "-",
+          id: row.id, user_id: row.user_id, name: row.full_name, age: row.age ?? "-",
+      gender: row.gender || "-",
       city: row.city || "-", height: row.height || "-", weight: row.weight || "-",
       complexion: row.complexion || "-", build: row.build || "-", religion: row.religion,
       caste: row.caste || "-", edu: row.education || "-", job: row.job_type,
