@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Heart, Shield, Briefcase, Landmark, User, Globe2, Search, X, Check, Sparkles, Crown, Gem, Phone, LogOut, Users, UserCircle, Send, MessageCircle, Lock, Video, VideoOff, Mic, MicOff, PhoneOff, Trash2, LayoutDashboard, BadgeCheck } from "lucide-react";
 
-// ---------- Mock data (no API, no backend cost) ----------
 const SEED_PROFILES = [
   { id: 1, name: "Priya Sharma", age: 26, city: "Ahmedabad", religion: "Hindu", caste: "Brahmin", edu: "M.Tech, IT", job: "govt", jobLabel: "Bank PO (SBI)", marital: "single", verified: true, income: "₹8-10 LPA", img: "🌸" },
   { id: 2, name: "Rohit Patel", age: 29, city: "Surat", religion: "Hindu", caste: "Patel", edu: "MBA", job: "business", jobLabel: "Textile Business (₹50L turnover)", marital: "single", verified: true, income: "₹12-15 LPA", img: "🌼" },
@@ -37,31 +36,18 @@ export default function MarriageBureauDemo() {
 
   function mapDbProfile(row) {
     return {
-      id: row.id,
-      user_id: row.user_id,
-      name: row.full_name,
-      age: row.age ?? "-",
-      city: row.city || "-",
-      height: row.height || "-",
-      weight: row.weight || "-",
-      complexion: row.complexion || "-",
-      build: row.build || "-",
-      religion: row.religion,
-      caste: row.caste || "-",
-      edu: row.education || "-",
-      job: row.job_type,
+      id: row.id, user_id: row.user_id, name: row.full_name, age: row.age ?? "-",
+      city: row.city || "-", height: row.height || "-", weight: row.weight || "-",
+      complexion: row.complexion || "-", build: row.build || "-", religion: row.religion,
+      caste: row.caste || "-", edu: row.education || "-", job: row.job_type,
       jobLabel: row.job_label || (JOB_META[row.job_type] ? JOB_META[row.job_type].label : ""),
-      marital: row.marital_status,
-      verified: row.verified,
-      income: row.income || "Not specified",
-      img: "🌸",
-      photoUrl: row.photo_url || "",
+      marital: row.marital_status, verified: row.verified, income: row.income || "Not specified",
+      img: "🌸", photoUrl: row.photo_url || "",
     };
   }
 
   const sessionRef = useRef(null);
 
-  // ---------- Session / token refresh helpers ----------
   async function refreshAccessToken(current) {
     const s = current || sessionRef.current;
     if (!s || !s.refresh_token) return null;
@@ -73,11 +59,7 @@ export default function MarriageBureauDemo() {
       });
       const data = await res.json();
       if (!res.ok || !data.access_token) return null;
-      const next = {
-        access_token: data.access_token,
-        refresh_token: data.refresh_token || s.refresh_token,
-        user: data.user || s.user,
-      };
+      const next = { access_token: data.access_token, refresh_token: data.refresh_token || s.refresh_token, user: data.user || s.user };
       await saveSession(next);
       return next;
     } catch (err) {
@@ -86,8 +68,6 @@ export default function MarriageBureauDemo() {
     }
   }
 
-  // Returns a valid access token, refreshing first if we have a refresh_token available.
-  // Call this right before any write/critical operation so a stale token doesn't cause "JWT expired".
   async function getFreshToken() {
     const s = sessionRef.current;
     if (!s) return null;
@@ -98,21 +78,14 @@ export default function MarriageBureauDemo() {
     return s.access_token;
   }
 
-  // Generic authenticated fetch: does the request, and if it fails with an expired/invalid
-  // JWT, refreshes the token once and retries automatically.
   async function authFetch(url, options = {}) {
     const s = sessionRef.current;
     let token = s ? s.access_token : null;
-    const withAuth = (t) => ({
-      ...options,
-      headers: { ...(options.headers || {}), Authorization: `Bearer ${t}` },
-    });
+    const withAuth = (t) => ({ ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${t}` } });
     let res = await fetch(url, withAuth(token));
     if (res.status === 401 || res.status === 403) {
       const refreshed = await refreshAccessToken(s);
-      if (refreshed) {
-        res = await fetch(url, withAuth(refreshed.access_token));
-      }
+      if (refreshed) res = await fetch(url, withAuth(refreshed.access_token));
     }
     return res;
   }
@@ -164,15 +137,13 @@ export default function MarriageBureauDemo() {
   const [dataLoading, setDataLoading] = useState(true);
   const [storageOK, setStorageOK] = useState(true);
 
-  // ---------- Mock payment (Razorpay-style UI, no real gateway/API cost) ----------
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [payMethod, setPayMethod] = useState("upi");
   const [upiId, setUpiId] = useState("");
   const [cardNumber, setCardNumber] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("form"); // form -> processing -> success
+  const [paymentStatus, setPaymentStatus] = useState("form");
 
-  // ---------- Chat & Interests — REAL Supabase tables (multi-user) ----------
-  const [conversations, setConversations] = useState({}); // { [profileId]: [{from, text, ts}] }
+  const [conversations, setConversations] = useState({});
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatDraft, setChatDraft] = useState("");
 
@@ -185,9 +156,7 @@ export default function MarriageBureauDemo() {
       if (!res.ok) return;
       const rows = await res.json();
       const map = {};
-      rows.forEach((r) => {
-        if (r.from_profile_id === myId) map[r.to_profile_id] = true;
-      });
+      rows.forEach((r) => { if (r.from_profile_id === myId) map[r.to_profile_id] = true; });
       setInterests(map);
     } catch (err) {
       console.error("Fetch interests failed:", err);
@@ -214,9 +183,8 @@ export default function MarriageBureauDemo() {
     }
   }
 
-  // ---------- Video call (self-camera preview only, mock connection — no WebRTC/Agora API cost) ----------
   const [callProfile, setCallProfile] = useState(null);
-  const [callStatus, setCallStatus] = useState("calling"); // calling -> connected -> ended
+  const [callStatus, setCallStatus] = useState("calling");
   const [camOn, setCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
   const [camError, setCamError] = useState("");
@@ -292,7 +260,6 @@ export default function MarriageBureauDemo() {
     }, 1600);
   }
 
-  // ---------- Real persistence (window.storage — survives refresh, no server cost) ----------
   useEffect(() => {
     (async () => {
       try {
@@ -327,7 +294,6 @@ export default function MarriageBureauDemo() {
             setSession(s);
             sessionRef.current = s;
             setAuthed(true);
-            // proactively refresh on load in case the saved token is already stale
             refreshAccessToken(s);
           }
         } catch {}
@@ -340,9 +306,6 @@ export default function MarriageBureauDemo() {
     })();
   }, []);
 
-  // Periodically refresh the token in the background so it never goes stale mid-session.
-
-
   async function saveProfiles(next) {
     setProfiles(next);
     try {
@@ -354,27 +317,27 @@ export default function MarriageBureauDemo() {
     }
   }
 
-  // ---------- Admin (mock PIN gate — local only, no separate auth backend) ----------
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [adminReports, setAdminReports] = useState([]);
-const [adminReportsLoading, setAdminReportsLoading] = useState(false);
+  const [adminReportsLoading, setAdminReportsLoading] = useState(false);
 
-async function fetchAdminReports() {
-  setAdminReportsLoading(true);
-  try {
-    const res = await authFetch(`${SUPABASE_URL}/rest/v1/reports?select=*&order=created_at.desc`, {
-      headers: { apikey: SUPABASE_ANON_KEY },
-    });
-    if (res.ok) {
-      const rows = await res.json();
-      setAdminReports(rows);
+  async function fetchAdminReports() {
+    setAdminReportsLoading(true);
+    try {
+      const res = await authFetch(`${SUPABASE_URL}/rest/v1/reports?select=*&order=created_at.desc`, {
+        headers: { apikey: SUPABASE_ANON_KEY },
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        setAdminReports(rows);
+      }
+    } catch (err) {
+      console.error("Fetch reports failed:", err);
+    } finally {
+      setAdminReportsLoading(false);
     }
-  } catch (err) {
-    console.error("Fetch reports failed:", err);
-  } finally {
-    setAdminReportsLoading(false);
   }
-}
+
   const [adminPin, setAdminPin] = useState("");
   const [adminPinError, setAdminPinError] = useState("");
   const ADMIN_PIN = "9999";
@@ -421,8 +384,7 @@ async function fetchAdminReports() {
 
   const [interestError, setInterestError] = useState("");
 
-  // ---------- Shortlist / Favorites — real Supabase table ----------
-  const [shortlist, setShortlist] = useState({}); // { [profileId]: true }
+  const [shortlist, setShortlist] = useState({});
   async function fetchShortlistRemote(token, myId) {
     try {
       const res = await authFetch(
@@ -476,9 +438,8 @@ async function fetchAdminReports() {
     }
   }
 
-  // ---------- Block & Report — real Supabase tables ----------
-  const [blocked, setBlocked] = useState({}); // { [profileId]: true }
-  const [reportTarget, setReportTarget] = useState(null); // profile being reported
+  const [blocked, setBlocked] = useState({});
+  const [reportTarget, setReportTarget] = useState(null);
   const [reportReason, setReportReason] = useState("");
   const [reportSent, setReportSent] = useState(false);
 
@@ -586,7 +547,6 @@ async function fetchAdminReports() {
     }
   }
 
-  // ---------- Profile creation ----------
   const EMPTY_FORM = {
     name: "", age: "", gender: "Female", city: "", religion: "Hindu", caste: "", maritalStatus: "single",
     height: "", weight: "", complexion: "Fair", build: "Average",
@@ -599,7 +559,7 @@ async function fetchAdminReports() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [profileCreated, setProfileCreated] = useState(false);
   const [photoError, setPhotoError] = useState("");
-  const [extraPhotos, setExtraPhotos] = useState([]); // [{file, previewUrl}]
+  const [extraPhotos, setExtraPhotos] = useState([]);
 
   function updateForm(key, val) {
     setForm((f) => ({ ...f, [key]: val }));
@@ -607,9 +567,7 @@ async function fetchAdminReports() {
   function togglePartnerPref(key) {
     setForm((f) => ({
       ...f,
-      partnerJobPref: f.partnerJobPref.includes(key)
-        ? f.partnerJobPref.filter((k) => k !== key)
-        : [...f.partnerJobPref, key],
+      partnerJobPref: f.partnerJobPref.includes(key) ? f.partnerJobPref.filter((k) => k !== key) : [...f.partnerJobPref, key],
     }));
   }
   const [profileSubmitError, setProfileSubmitError] = useState("");
@@ -618,43 +576,22 @@ async function fetchAdminReports() {
     setProfileSubmitError("");
     setProfileSubmitting(true);
     try {
-      // Get a guaranteed-fresh token before doing anything, so a stale token never blocks submission.
       const freshToken = (await getFreshToken()) || session.access_token;
 
       const body = {
-        user_id: session.user.id,
-        role: role || "self",
-        full_name: form.name || "Unnamed",
-        age: form.age ? parseInt(form.age, 10) : null,
-        gender: form.gender,
-        city: form.city || null,
-        religion: form.religion,
-        caste: form.caste || null,
-        marital_status: form.maritalStatus,
-        height: form.height || null,
-        weight: form.weight || null,
-        complexion: form.complexion,
-        build: form.build,
-        education: form.edu || null,
-        job_type: form.jobType,
-        job_label: form.jobLabel || JOB_META[form.jobType].label,
-        income: form.income || null,
-        family_type: form.familyType,
-        father_occupation: form.fatherOcc || null,
+        user_id: session.user.id, role: role || "self", full_name: form.name || "Unnamed",
+        age: form.age ? parseInt(form.age, 10) : null, gender: form.gender, city: form.city || null,
+        religion: form.religion, caste: form.caste || null, marital_status: form.maritalStatus,
+        height: form.height || null, weight: form.weight || null, complexion: form.complexion, build: form.build,
+        education: form.edu || null, job_type: form.jobType, job_label: form.jobLabel || JOB_META[form.jobType].label,
+        income: form.income || null, family_type: form.familyType, father_occupation: form.fatherOcc || null,
         partner_age_min: form.partnerAgeMin ? parseInt(form.partnerAgeMin, 10) : null,
         partner_age_max: form.partnerAgeMax ? parseInt(form.partnerAgeMax, 10) : null,
-        partner_job_pref: form.partnerJobPref,
-        photo_url: form.photoUrl || null,
-        verified: false,
+        partner_job_pref: form.partnerJobPref, photo_url: form.photoUrl || null, verified: false,
       };
       const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${freshToken}`,
-          Prefer: "return=representation",
-        },
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${freshToken}`, Prefer: "return=representation" },
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -663,7 +600,6 @@ async function fetchAdminReports() {
       }
       const [row] = await res.json();
 
-      // Upload extra gallery photos to Supabase Storage + link in profile_photos table
       if (extraPhotos.length > 0) {
         for (const p of extraPhotos) {
           try {
@@ -671,22 +607,14 @@ async function fetchAdminReports() {
             const filePath = `${session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
             const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/profile-photos/${filePath}`, {
               method: "POST",
-              headers: {
-                apikey: SUPABASE_ANON_KEY,
-                Authorization: `Bearer ${freshToken}`,
-                "Content-Type": p.file.type,
-              },
+              headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${freshToken}`, "Content-Type": p.file.type },
               body: p.file,
             });
             if (!uploadRes.ok) continue;
             const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/profile-photos/${filePath}`;
             await fetch(`${SUPABASE_URL}/rest/v1/profile_photos`, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                apikey: SUPABASE_ANON_KEY,
-                Authorization: `Bearer ${freshToken}`,
-              },
+              headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${freshToken}` },
               body: JSON.stringify({ profile_id: row.id, photo_url: publicUrl }),
             });
           } catch (err) {
@@ -712,22 +640,21 @@ async function fetchAdminReports() {
     setExtraPhotos([]);
   }
 
-  // ---------- Auth — REAL Supabase Auth via REST (no SDK needed, zero extra cost) ----------
   const [authed, setAuthed] = useState(false);
-  const [authStep, setAuthStep] = useState("role"); // role -> auth
+  const [authStep, setAuthStep] = useState("role");
   const [role, setRole] = useState(null);
-  const [authMode, setAuthMode] = useState("signup"); // signup | login
+  const [authMode, setAuthMode] = useState("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [session, setSession] = useState(null); // { access_token, refresh_token, user }
-  // Periodically refresh the token in the background so it never goes stale mid-session.
+  const [session, setSession] = useState(null);
+
   useEffect(() => {
     if (!session) return;
     const interval = setInterval(() => {
       refreshAccessToken();
-    }, 20 * 60 * 1000); // every 20 minutes
+    }, 20 * 60 * 1000);
     return () => clearInterval(interval);
   }, [session && session.refresh_token]);
 
@@ -966,7 +893,6 @@ async function fetchAdminReports() {
         .card-shadow { box-shadow: 0 4px 18px rgba(122,31,43,0.10); }
       `}</style>
 
-      {/* Header */}
       <header style={{ background: "#7A1F2B" }} className="px-5 py-4 flex items-center justify-between sticky top-0 z-20 card-shadow">
         <div className="flex items-center gap-2">
           <Heart size={22} color="#C89B3C" fill="#C89B3C" />
@@ -985,32 +911,26 @@ async function fetchAdminReports() {
                 key={key}
                 onClick={() => setTab(key)}
                 className="px-4 py-1.5 rounded-full text-sm font-semibold transition"
-                style={{
-                  background: tab === key ? "#C89B3C" : "transparent",
-                  color: tab === key ? "#3D2200" : "#F4DCC7",
-                }}
+                style={{ background: tab === key ? "#C89B3C" : "transparent", color: tab === key ? "#3D2200" : "#F4DCC7" }}
               >
                 {label}
               </button>
             ))}
           </nav>
-         <button
-  onClick={() => setTab("chat")}
-  title="Notifications"
-  className="ml-1 p-2 rounded-full relative"
-  style={{ color: "#F4DCC7" }}
->
-  <MessageCircle size={16} />
-  {Object.keys(interests).length > 0 && (
-    <span
-      className="absolute flex items-center justify-center"
-      style={{
-        top: 2, right: 2, width: 8, height: 8, borderRadius: "50%",
-        background: "#C89B3C",
-      }}
-    />
-  )}
-</button>
+          <button
+            onClick={() => setTab("chat")}
+            title="Notifications"
+            className="ml-1 p-2 rounded-full relative"
+            style={{ color: "#F4DCC7" }}
+          >
+            <MessageCircle size={16} />
+            {Object.keys(interests).length > 0 && (
+              <span
+                className="absolute flex items-center justify-center"
+                style={{ top: 2, right: 2, width: 8, height: 8, borderRadius: "50%", background: "#C89B3C" }}
+              />
+            )}
+          </button>
           <button
             onClick={handleLogout}
             title="Logout"
@@ -1057,7 +977,6 @@ async function fetchAdminReports() {
             </button>
           </div>
 
-          {/* Quick filter chips (the 5 special filters from the blueprint) */}
           <div className="flex flex-wrap gap-2 mb-6">
             {[
               ["govt", "Govt Job", Landmark],
@@ -1070,11 +989,7 @@ async function fetchAdminReports() {
                 key={key}
                 onClick={() => toggleFilter(key)}
                 className="chip"
-                style={{
-                  background: filters[key] ? "#7A1F2B" : "#F4DCC7",
-                  color: filters[key] ? "#FBF6EE" : "#6B4A1F",
-                  border: "1px solid #C89B3C55",
-                }}
+                style={{ background: filters[key] ? "#7A1F2B" : "#F4DCC7", color: filters[key] ? "#FBF6EE" : "#6B4A1F", border: "1px solid #C89B3C55" }}
               >
                 <Icon size={12} /> {label}
               </button>
@@ -1082,11 +997,7 @@ async function fetchAdminReports() {
             <button
               onClick={() => setShortlistOnly((s) => !s)}
               className="chip"
-              style={{
-                background: shortlistOnly ? "#7A1F2B" : "#F4DCC7",
-                color: shortlistOnly ? "#FBF6EE" : "#6B4A1F",
-                border: "1px solid #C89B3C55",
-              }}
+              style={{ background: shortlistOnly ? "#7A1F2B" : "#F4DCC7", color: shortlistOnly ? "#FBF6EE" : "#6B4A1F", border: "1px solid #C89B3C55" }}
             >
               <Heart size={12} fill={shortlistOnly ? "#FBF6EE" : "none"} /> Shortlisted
             </button>
@@ -1171,7 +1082,6 @@ async function fetchAdminReports() {
             </div>
           ) : (
             <div className="card-shadow bg-white rounded-2xl p-6">
-              {/* Step indicator */}
               <div className="flex items-center gap-1.5 mb-5">
                 {[1, 2, 3, 4].map((s) => (
                   <div key={s} className="flex-1 h-1.5 rounded-full" style={{ background: s <= profileStep ? "#7A1F2B" : "#F4DCC7" }} />
@@ -1428,7 +1338,6 @@ async function fetchAdminReports() {
             </div>
           ) : (
             <div className="card-shadow bg-white rounded-2xl overflow-hidden" style={{ minHeight: 420, display: "flex" }}>
-              {/* Thread list */}
               <div style={{ width: activeChatId ? "40%" : "100%", borderRight: "1px solid #F4DCC7" }} className="overflow-y-auto">
                 {Object.keys(interests).length === 0 ? (
                   <p className="text-sm text-center p-6" style={{ color: "#6B5B4D" }}>Koi interest bheja nahi hai abhi. Browse tab se kisi ko interest bhejein.</p>
@@ -1458,7 +1367,6 @@ async function fetchAdminReports() {
                 )}
               </div>
 
-              {/* Active thread */}
               {activeChatId && (() => {
                 const p = profiles.find((pr) => pr.id === activeChatId);
                 const thread = conversations[activeChatId] || [];
@@ -1529,14 +1437,13 @@ async function fetchAdminReports() {
               {adminPinError && <p className="text-xs mb-2" style={{ color: "#B3261E" }}>{adminPinError}</p>}
               <button
                 onClick={() => {
-  if (adminPin === ADMIN_PIN) {
-    setAdminAuthed(true);
-    fetchAdminReports();
-  } else {
-    setAdminPinError("Galat PIN. Demo ke liye 9999 try karein.");
-  }
-}}
-               liye 9999 try karein."))}
+                  if (adminPin === ADMIN_PIN) {
+                    setAdminAuthed(true);
+                    fetchAdminReports();
+                  } else {
+                    setAdminPinError("Galat PIN. Demo ke liye 9999 try karein.");
+                  }
+                }}
                 disabled={adminPin.length !== 4}
                 className="w-full py-2.5 rounded-full text-sm font-semibold"
                 style={{ background: adminPin.length === 4 ? "#7A1F2B" : "#C89B3C55", color: "#FBF6EE" }}
@@ -1553,7 +1460,6 @@ async function fetchAdminReports() {
                 <button onClick={() => { setAdminAuthed(false); setAdminPin(""); }} className="text-xs font-semibold" style={{ color: "#6B5B4D" }}>Logout</button>
               </div>
 
-              {/* Stats cards */}
               <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
                 {[
                   { label: "Total Profiles", value: profiles.length, real: true },
@@ -1569,72 +1475,10 @@ async function fetchAdminReports() {
               </div>
               <p className="text-xs mb-5" style={{ color: "#C89B3C" }}>*Sample projection from the blueprint — real revenue tracking needs a payments backend, isn't live data.</p>
 
-              {/* Reports */}
-              <div className="card-shadow bg-white rounded-2xl overflow-hidden mt-5">
-                <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #F4DCC7" }}>
-                  <h3 className="font-semibold text-sm">Reports ({adminReports.length})</h3>
+              <div className="card-shadow bg-white rounded-2xl overflow-hidden">
+                <div className="px-4 py-3" style={{ borderBottom: "1px solid #F4DCC7" }}>
+                  <h3 className="font-semibold text-sm">Profile Management</h3>
                 </div>
-                {adminReportsLoading ? (
-                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Loading…</p>
-                ) : adminReports.length === 0 ? (
-                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Koi report nahi hai abhi.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr style={{ background: "#FBF6EE", color: "#6B5B4D" }}>
-                          <th className="text-left px-4 py-2 font-semibold">Reported Profile ID</th>
-                          <th className="text-left px-4 py-2 font-semibold">Reason</th>
-                          <th className="text-left px-4 py-2 font-semibold">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {adminReports.map((r) => (
-                          <tr key={r.id} style={{ borderTop: "1px solid #F4DCC722" }}>
-                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{r.reported_profile_id}</td>
-                            <td className="px-4 py-2.5">{r.reason}</td>
-                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{new Date(r.created_at).toLocaleDateString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-                )}
-              </div>
-                {/* Reports */}
-              <div className="card-shadow bg-white rounded-2xl overflow-hidden mt-5">
-                <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #F4DCC7" }}>
-                  <h3 className="font-semibold text-sm">Reports ({adminReports.length})</h3>
-                </div>
-                {adminReportsLoading ? (
-                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Loading…</p>
-                ) : adminReports.length === 0 ? (
-                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Koi report nahi hai abhi.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr style={{ background: "#FBF6EE", color: "#6B5B4D" }}>
-                          <th className="text-left px-4 py-2 font-semibold">Reported Profile ID</th>
-                          <th className="text-left px-4 py-2 font-semibold">Reason</th>
-                          <th className="text-left px-4 py-2 font-semibold">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {adminReports.map((r) => (
-                          <tr key={r.id} style={{ borderTop: "1px solid #F4DCC722" }}>
-                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{r.reported_profile_id}</td>
-                            <td className="px-4 py-2.5">{r.reason}</td>
-                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{new Date(r.created_at).toLocaleDateString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -1674,6 +1518,38 @@ async function fetchAdminReports() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div className="card-shadow bg-white rounded-2xl overflow-hidden mt-5">
+                <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #F4DCC7" }}>
+                  <h3 className="font-semibold text-sm">Reports ({adminReports.length})</h3>
+                </div>
+                {adminReportsLoading ? (
+                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Loading…</p>
+                ) : adminReports.length === 0 ? (
+                  <p className="text-xs p-4" style={{ color: "#6B5B4D" }}>Koi report nahi hai abhi.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ background: "#FBF6EE", color: "#6B5B4D" }}>
+                          <th className="text-left px-4 py-2 font-semibold">Reported Profile ID</th>
+                          <th className="text-left px-4 py-2 font-semibold">Reason</th>
+                          <th className="text-left px-4 py-2 font-semibold">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminReports.map((r) => (
+                          <tr key={r.id} style={{ borderTop: "1px solid #F4DCC722" }}>
+                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{r.reported_profile_id}</td>
+                            <td className="px-4 py-2.5">{r.reason}</td>
+                            <td className="px-4 py-2.5" style={{ color: "#6B5B4D" }}>{new Date(r.created_at).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1722,7 +1598,6 @@ async function fetchAdminReports() {
         </main>
       )}
 
-      {/* Profile detail modal */}
       {selected && (
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4" style={{ background: "#00000066" }} onClick={() => setSelected(null)}>
           <div className="bg-white rounded-2xl max-w-sm w-full overflow-hidden card-shadow" onClick={(e) => e.stopPropagation()}>
@@ -1800,7 +1675,6 @@ async function fetchAdminReports() {
         </div>
       )}
 
-      {/* Filter panel */}
       {showFilters && (
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4" style={{ background: "#00000066" }} onClick={() => setShowFilters(false)}>
           <div className="bg-white rounded-2xl max-w-xs w-full p-5 card-shadow" onClick={(e) => e.stopPropagation()}>
@@ -1831,11 +1705,9 @@ async function fetchAdminReports() {
         </div>
       )}
 
-      {/* Payment checkout (Razorpay-style mock — no real gateway) */}
       {checkoutPlan && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "#00000077" }} onClick={paymentStatus === "form" ? closeCheckout : undefined}>
           <div className="bg-white rounded-2xl max-w-sm w-full overflow-hidden card-shadow" onClick={(e) => e.stopPropagation()}>
-            {/* Header styled like a payment gateway */}
             <div className="px-5 py-4 flex items-center justify-between" style={{ background: "#241C15" }}>
               <div>
                 <p className="text-xs" style={{ color: "#C89B3C" }}>Rishta Milan · Secure Checkout (Demo)</p>
@@ -1923,7 +1795,6 @@ async function fetchAdminReports() {
         </div>
       )}
 
-      {/* Report profile modal */}
       {reportTarget && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "#00000077" }} onClick={() => setReportTarget(null)}>
           <div className="bg-white rounded-2xl max-w-xs w-full p-5 card-shadow" onClick={(e) => e.stopPropagation()}>
@@ -1967,11 +1838,9 @@ async function fetchAdminReports() {
         </div>
       )}
 
-      {/* Video call overlay (self-camera preview + simulated connection) */}
       {callProfile && (
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "#1A1410" }}>
           <div className="flex-1 relative flex items-center justify-center">
-            {/* "Other person" side — since there's no real second user, this stays a static avatar */}
             <div className="flex flex-col items-center">
               <div className="w-28 h-28 rounded-full flex items-center justify-center overflow-hidden mb-4" style={{ border: "3px solid #C89B3C" }}>
                 {callProfile.photoUrl ? (
@@ -1993,7 +1862,6 @@ async function fetchAdminReports() {
               )}
             </div>
 
-            {/* Self camera preview */}
             {callStatus === "connected" && (
               <div className="absolute bottom-5 right-5 rounded-xl overflow-hidden" style={{ width: 110, height: 150, background: "#241C15", border: "2px solid #C89B3C" }}>
                 {camOn && !camError ? (
@@ -2010,7 +1878,6 @@ async function fetchAdminReports() {
             )}
           </div>
 
-          {/* Call controls */}
           <div className="flex items-center justify-center gap-4 py-6">
             <button
               onClick={() => setMicOn((m) => !m)}
