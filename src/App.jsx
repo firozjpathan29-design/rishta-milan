@@ -108,6 +108,24 @@ export default function MarriageBureauDemo() {
 
   const [tab, setTab] = useState("browse");
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
+    const [advFilters, setAdvFilters] = useState({
+    education: "",
+    incomeRange: "",
+    caste: "",
+    ageMin: "",
+    ageMax: "",
+    city: "",
+    gender: "",
+  });
+  function updateAdvFilter(key, val) {
+    setAdvFilters((f) => ({ ...f, [key]: val }));
+  }
+  function parseIncomeLakhs(incomeStr) {
+    if (!incomeStr) return null;
+    const match = String(incomeStr).match(/(\d+(\.\d+)?)/);
+    if (!match) return null;
+    return parseFloat(match[1]);
+  }
   const [showFilters, setShowFilters] = useState(false);
   const [shortlistOnly, setShortlistOnly] = useState(false);
   const [selected, setSelected] = useState(null);
