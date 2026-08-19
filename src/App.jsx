@@ -800,7 +800,20 @@ export default function MarriageBureauDemo() {
       return true;
     });
   }, [filters, advFilters, profiles, shortlistOnly, shortlist, blocked]);
-
+  const recommendedProfiles = useMemo(() => {
+    if (!myProfile) return [];
+    return profiles
+      .filter((p) => {
+        if (p.id === myProfile.id) return false;
+        if (blocked[p.id]) return false;
+        if (interests[p.id]) return false;
+        if (myProfile.gender && p.gender && myProfile.gender === p.gender) return false;
+        if (myProfile.partnerAgeMin && p.age !== "-" && Number(p.age) < myProfile.partnerAgeMin) return false;
+        if (myProfile.partnerAgeMax && p.age !== "-" && Number(p.age) > myProfile.partnerAgeMax) return false;
+        return true;
+      })
+      .slice(0, 6);
+  }, [profiles, myProfile, blocked, interests]);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   function toggleFilter(key) {
