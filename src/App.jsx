@@ -38,6 +38,9 @@ export default function MarriageBureauDemo() {
     return {
           id: row.id, user_id: row.user_id, name: row.full_name, age: row.age ?? "-",
       gender: row.gender || "-",
+            id: row.id, user_id: row.user_id, name: row.full_name, age: row.age ?? "-",
+      gender: row.gender || "-",
+      partnerAgeMin: row.partner_age_min ?? null, partnerAgeMax: row.partner_age_max ?? null,
       city: row.city || "-", height: row.height || "-", weight: row.weight || "-",
       complexion: row.complexion || "-", build: row.build || "-", religion: row.religion,
       caste: row.caste || "-", edu: row.education || "-", job: row.job_type,
