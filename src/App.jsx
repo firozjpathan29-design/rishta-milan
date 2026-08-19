@@ -1023,7 +1023,29 @@ export default function MarriageBureauDemo() {
 
       {tab === "browse" && (
         <main className="px-5 py-6 max-w-5xl mx-auto">
+                    {recommendedProfiles.length > 0 && (
+            <div className="mb-8">
+              <h2 className="display text-xl mb-3" style={{ color: "#7A1F2B" }}>Recommended for you</h2>
+              <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+                {recommendedProfiles.map((p) => (
+                  <div key={p.id} className="rounded-xl p-3 card-shadow bg-white flex items-center gap-3 cursor-pointer" onClick={() => setSelected(p)}>
+                    {p.photoUrl ? (
+                      <img src={p.photoUrl} alt={p.name} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover" }} />
+                    ) : (
+                      <span style={{ fontSize: 26 }}>{p.img}</span>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{p.name}</p>
+                      <p className="text-xs truncate" style={{ color: "#6B5B4D" }}>{p.age} yrs · {p.city}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="motif-divider mt-6" />
+            </div>
+          )}
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+
             <div>
               <h1 className="display text-3xl" style={{ color: "#7A1F2B" }}>Find a match</h1>
               <p className="text-sm" style={{ color: "#6B5B4D" }}>{filtered.length} profiles {activeFilterCount > 0 && `· ${activeFilterCount} filters active`}</p>
