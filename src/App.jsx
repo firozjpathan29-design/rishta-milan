@@ -1718,10 +1718,10 @@ export default function MarriageBureauDemo() {
           </div>
         </div>
       )}
-
+      {/* Filter panel */}
       {showFilters && (
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4" style={{ background: "#00000066" }} onClick={() => setShowFilters(false)}>
-          <div className="bg-white rounded-2xl max-w-xs w-full p-5 card-shadow" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl max-w-xs w-full p-5 card-shadow" style={{ maxHeight: "85vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="display text-xl" style={{ color: "#7A1F2B" }}>Filters</h3>
               <button onClick={() => setShowFilters(false)}><X size={18} /></button>
@@ -1738,9 +1738,39 @@ export default function MarriageBureauDemo() {
                 <Icon size={15} /> {label}
               </label>
             ))}
+
+            <div className="motif-divider" />
+            <p className="text-xs font-semibold mb-2" style={{ color: "#C89B3C" }}>ADVANCED SEARCH</p>
+
+            <select value={advFilters.gender} onChange={(e) => updateAdvFilter("gender", e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-2" style={{ border: "1px solid #C89B3C55" }}>
+              <option value="">Gender: Any</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+
+            <input placeholder="City" value={advFilters.city} onChange={(e) => updateAdvFilter("city", e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-2" style={{ border: "1px solid #C89B3C55" }} />
+
+            <input placeholder="Caste / Community (e.g. Pathan)" value={advFilters.caste} onChange={(e) => updateAdvFilter("caste", e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-2" style={{ border: "1px solid #C89B3C55" }} />
+
+            <input placeholder="Education (e.g. MBA, Graduate)" value={advFilters.education} onChange={(e) => updateAdvFilter("education", e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-2" style={{ border: "1px solid #C89B3C55" }} />
+
+            <div className="flex gap-2 mb-2">
+              <input placeholder="Min Age" type="number" value={advFilters.ageMin} onChange={(e) => updateAdvFilter("ageMin", e.target.value)} className="w-1/2 px-3 py-2 rounded-xl text-sm outline-none" style={{ border: "1px solid #C89B3C55" }} />
+              <input placeholder="Max Age" type="number" value={advFilters.ageMax} onChange={(e) => updateAdvFilter("ageMax", e.target.value)} className="w-1/2 px-3 py-2 rounded-xl text-sm outline-none" style={{ border: "1px solid #C89B3C55" }} />
+            </div>
+
+            <select value={advFilters.incomeRange} onChange={(e) => updateAdvFilter("incomeRange", e.target.value)} className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-2" style={{ border: "1px solid #C89B3C55" }}>
+              <option value="">Income: Any</option>
+              <option value="below2">2 lakh se kam</option>
+              <option value="2to3">2-3 lakh</option>
+              <option value="3to4">3-4 lakh</option>
+              <option value="4to5">4-5 lakh</option>
+              <option value="above5">5 lakh se upar</option>
+            </select>
+
             <button
-              onClick={() => { setFilters(FILTER_DEFAULTS); }}
-              className="w-full mt-3 py-2 rounded-full text-xs font-semibold"
+              onClick={() => { setFilters(FILTER_DEFAULTS); setAdvFilters({ education: "", incomeRange: "", caste: "", ageMin: "", ageMax: "", city: "", gender: "" }); }}
+              className="w-full mt-2 py-2 rounded-full text-xs font-semibold"
               style={{ border: "1px solid #7A1F2B", color: "#7A1F2B" }}
             >
               Clear All
@@ -1748,6 +1778,7 @@ export default function MarriageBureauDemo() {
           </div>
         </div>
       )}
+      
 
       {checkoutPlan && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: "#00000077" }} onClick={paymentStatus === "form" ? closeCheckout : undefined}>
