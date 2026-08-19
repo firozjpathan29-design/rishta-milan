@@ -769,7 +769,7 @@ export default function MarriageBureauDemo() {
     setPassword("");
   }
 
-  const filtered = useMemo(() => {
+    const filtered = useMemo(() => {
     return profiles.filter((p) => {
       if (blocked[p.id]) return false;
       if (filters.govt && p.job !== "govt") return false;
@@ -778,9 +778,25 @@ export default function MarriageBureauDemo() {
       if (filters.single && p.marital !== "single") return false;
       if (filters.widow && !(p.marital === "widow" || p.marital === "widower")) return false;
       if (shortlistOnly && !shortlist[p.id]) return false;
+
+      if (advFilters.education && !String(p.edu || "").toLowerCase().includes(advFilters.education.toLowerCase())) return false;
+      if (advFilters.caste && !String(p.caste || "").toLowerCase().includes(advFilters.caste.toLowerCase())) return false;
+      if (advFilters.city && !String(p.city || "").toLowerCase().includes(advFilters.city.toLowerCase())) return false;
+      if (advFilters.gender && String(p.gender || "").toLowerCase() !== advFilters.gender.toLowerCase()) return false;
+      if (advFilters.ageMin && (!p.age || p.age === "-" || Number(p.age) < Number(advFilters.ageMin))) return false;
+      if (advFilters.ageMax && (!p.age || p.age === "-" || Number(p.age) > Number(advFilters.ageMax))) return false;
+      if (advFilters.incomeRange) {
+        const incomeNum = parseIncomeLakhs(p.income);
+        if (incomeNum === null) return false;
+        if (advFilters.incomeRange === "below2" && incomeNum >= 2) return false;
+        if (advFilters.incomeRange === "2to3" && !(incomeNum >= 2 && incomeNum <= 3)) return false;
+        if (advFilters.incomeRange === "3to4" && !(incomeNum >= 3 && incomeNum <= 4)) return false;
+        if (advFilters.incomeRange === "4to5" && !(incomeNum >= 4 && incomeNum <= 5)) return false;
+        if (advFilters.incomeRange === "above5" && incomeNum < 5) return false;
+      }
       return true;
     });
-  }, [filters, profiles, shortlistOnly, shortlist, blocked]);
+  }, [filters, advFilters, profiles, shortlistOnly, shortlist, blocked]);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
